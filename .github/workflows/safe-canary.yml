@@ -1,66 +1,100 @@
-name: Safe model deployment - canary demonstration
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'safe-canary/**'
-      - '.github/workflows/safe-canary.yml'
-  pull_request:
-    paths:
-      - 'safe-canary/**'
-      - '.github/workflows/safe-canary.yml'
-
-permissions:
-  contents: read
 
 jobs:
-  # Ephemeral staging: no SSH server, secrets or long-lived environment required.
   canary-demo:
     name: Canary deployment and rollback on a GitHub runner
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: safe-canary
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+
+      # Support either a flat repository or the nested layout in the original ZIP.
+      - name: Locate project directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Repository files:"
+          ls -la
+          if [[ -f safe-canary/compose.yaml && -f safe-canary/requirements-dev.txt ]]; then
+            echo 'PROJECT_DIR=safe-canary' >> "$GITHUB_ENV"
+            echo 'Project layout: nested safe-canary/'
+          elif [[ -f compose.yaml && -f requirements-dev.txt ]]; then
+            echo 'PROJECT_DIR=.' >> "$GITHUB_ENV"
+            echo 'Project layout: repository root'
+          else
+            echo '::error::Project not found. Expected compose.yaml and requirements-dev.txt in repository root or safe-canary/.'
+            find . -maxdepth 3 -name compose.yaml -print
+            exit 1
+          fi
+
       - name: Unit tests and fixture generation
         run: |
+          cd "$PROJECT_DIR"
           python -m pip install -r requirements-dev.txt
           python -m pytest -q tests
           python scripts/generate_fixture.py
           python scripts/evaluate.py
+
       - name: Reset routing to stable before starting gateway
-        run: python scripts/route.py 0 --no-reload
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/route.py 0 --no-reload
+
       - name: Build one versioned container image
-        run: docker compose build stable
+        run: |
+          cd "$PROJECT_DIR"
+          docker compose build stable
+
       - name: Start both model versions and proxy (0% canary)
-        run: docker compose up --no-build -d
+        run: |
+          cd "$PROJECT_DIR"
+          docker compose up --no-build -d
+
       - name: Check readiness and version attribution
-        run: python scripts/smoke.py
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/smoke.py
+
       - name: Configure 5% canary traffic
-        run: python scripts/route.py 5
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/route.py 5
+
       - name: Collect routed traffic sample
-        run: python scripts/probe_traffic.py --requests 500 --workers 12
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/probe_traffic.py --requests 500 --workers 12
+
       - name: Verify faulty v2 is blocked by ML quality gate
-        run: python scripts/assess_canary.py --expect-rejection
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/assess_canary.py --expect-rejection
+
       - name: Roll back during concurrent requests (no rebuild)
-        run: python scripts/rollback_check.py
+        run: |
+          cd "$PROJECT_DIR"
+          python scripts/rollback_check.py
+
       - name: Upload report files
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: safe-canary-reports
-          path: safe-canary/reports/*.json
+          path: |
+            reports/*.json
+            safe-canary/reports/*.json
           if-no-files-found: warn
+
       - name: Show container logs if tests fail
         if: failure()
-        run: docker compose logs --no-color --tail=150
+        run: |
+          cd "$PROJECT_DIR"
+          docker compose logs --no-color --tail=150
+
       - name: Stop demo containers
         if: always()
-        run: docker compose down --remove-orphans
+        run: |
+          cd "$PROJECT_DIR"
+          docker compose down --remove-orphans
