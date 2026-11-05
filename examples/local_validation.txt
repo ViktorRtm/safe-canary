@@ -1,0 +1,5 @@
+Python module compilation: PASS
+pytest: 8 passed
+Nginx config parse (host substitutions, stable + 95/5): PASS
+GitHub Actions YAML parsed: PASS
+Docker build / canary requests / actual rollback: NOT RUN (no Docker in this environment)

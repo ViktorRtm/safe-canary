@@ -1,0 +1,44 @@
+services:
+  stable:
+    image: safe-ml-inference:1.0.0
+    build: .
+    environment:
+      MODEL_VERSION: v1
+      MODEL_FILE: models/v1.json
+    ports:
+      - "127.0.0.1:18081:8000"  # demo-only direct access
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  canary:
+    image: safe-ml-inference:1.0.0
+    environment:
+      MODEL_VERSION: v2
+      MODEL_FILE: models/v2.json
+    ports:
+      - "127.0.0.1:18082:8000"  # demo-only direct access
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.28-alpine
+    ports:
+      - "127.0.0.1:8080:8080"
+    # Mount the *directory*, so atomic rename of active-upstream.conf is visible
+    # to the running container (unlike a bind mount of the individual file).
+    volumes:
+      - ./routing:/etc/nginx/conf.d:ro
+    depends_on:
+      stable:
+        condition: service_healthy
+      canary:
+        condition: service_healthy
+    restart: unless-stopped
