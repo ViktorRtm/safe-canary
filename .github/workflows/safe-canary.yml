@@ -1,3 +1,35 @@
+name: Safe model deployment - canary demonstration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'safe-canary/**'
+      - 'app/**'
+      - 'models/**'
+      - 'routing/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'compose.yaml'
+      - 'Dockerfile'
+      - 'requirements*.txt'
+      - '.github/workflows/safe-canary.yml'
+  pull_request:
+    paths:
+      - 'safe-canary/**'
+      - 'app/**'
+      - 'models/**'
+      - 'routing/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'compose.yaml'
+      - 'Dockerfile'
+      - 'requirements*.txt'
+      - '.github/workflows/safe-canary.yml'
+
+permissions:
+  contents: read
 
 jobs:
   canary-demo:
