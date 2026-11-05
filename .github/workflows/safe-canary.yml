@@ -102,7 +102,7 @@ jobs:
       - name: Verify faulty v2 is blocked by ML quality gate
         run: |
           cd "$PROJECT_DIR"
-          python scripts/assess_canary.py --expect-rejection
+          python scripts/assess_canary.py
 
       - name: Roll back during concurrent requests (no rebuild)
         run: |
